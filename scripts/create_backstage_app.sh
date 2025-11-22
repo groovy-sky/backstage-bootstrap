@@ -34,7 +34,7 @@ if [ -d "${APP_NAME}" ]; then
 fi
 
 # Run the Backstage create-app command
-echo "Running: npx @backstage/create-app@latest --skip-install"
+echo "Running: npx @backstage/create-app@latest --path ${APP_NAME}"
 echo ""
 npx @backstage/create-app@latest --path "${APP_NAME}"
 
