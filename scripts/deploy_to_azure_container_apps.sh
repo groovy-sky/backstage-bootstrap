@@ -4,6 +4,11 @@ set -e
 # Script to deploy Backstage to Azure Container Apps
 # This creates all necessary Azure resources and deploys the container
 
+# Always run from repo root to simplify relative paths
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+REPO_ROOT=$(cd "${SCRIPT_DIR}/.." && pwd)
+cd "${REPO_ROOT}"
+
 echo "================================================"
 echo "Backstage Deployment to Azure Container Apps"
 echo "================================================"
@@ -114,27 +119,17 @@ BACKSTAGE_APP_DIR="backstage-app"
 
 if [ ! -d "${BACKSTAGE_APP_DIR}" ]; then
     echo "Error: Backstage app directory '${BACKSTAGE_APP_DIR}' not found."
-    echo "Please run './scripts/create_backstage_app.sh' and './scripts/build_and_run_docker.sh' first."
+    echo "Please run './scripts/create_backstage_app.sh' first to scaffold the application."
     exit 1
 fi
 
-# Navigate to app directory and build backend if needed
-cd "${BACKSTAGE_APP_DIR}"
-
-if [ ! -d "packages/backend/dist" ]; then
-    echo "Building backend bundle..."
-    yarn install --frozen-lockfile
-    yarn build:backend
-fi
-
-cd ..
-
-# Build and push using ACR
+# Build and push using ACR (multi-stage Docker build happens server-side)
 az acr build \
     --registry "${ACR_NAME}" \
     --image "${IMAGE_NAME}:${IMAGE_TAG}" \
     --file backstage/Dockerfile \
-    "${BACKSTAGE_APP_DIR}"
+    --build-arg APP_DIR="${BACKSTAGE_APP_DIR}" \
+    .
 
 echo "✓ Image pushed to ACR"
 

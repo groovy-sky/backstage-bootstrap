@@ -11,9 +11,9 @@ This repository provides step-by-step documentation and scripts to:
 
 ## Prerequisites
 
-- **Node.js** 18.x or 20.x (LTS versions)
-- **Yarn** 1.22.x or newer
-- **Docker** 20.10.x or newer
+- **Docker** 20.10.x+ or **Podman** 4.x+ (all scripts auto-detect `docker`/`podman`)
+- **Node.js** 18.x or 20.x (optional; only needed for local `yarn dev` outside containers)
+- **Yarn** 1.22.x or newer (optional; installs run inside containers otherwise)
 - **Azure CLI** 2.40.x or newer
 - **Git** 2.x or newer
 
@@ -30,29 +30,39 @@ This repository provides step-by-step documentation and scripts to:
 
 ### 1. Scaffold a Backstage Application
 
-Run the scaffolding script to create a new Backstage app:
+Run the scaffolding script to create a new Backstage app (it pulls a Node image and runs `npx` inside Docker/Podman, so no local Node.js/Yarn install is required):
 
 ```bash
 ./scripts/create_backstage_app.sh
 ```
 
 This script will:
-- Create a new Backstage app using `npx @backstage/create-app@latest`
+- Create a new Backstage app using `npx @backstage/create-app@latest` inside Docker/Podman
 - Place the app in the `backstage-app/` directory (excluded from git)
 - Prompt you for an app name (default: `backstage-app`)
+- Respect `BACKSTAGE_CREATE_IMAGE` if you want to use a different Node base image
 
 ### 2. Build and Run Docker Image Locally
 
-Build the Backstage backend Docker image and test it locally:
+Build the Backstage backend Docker image (no host Node.js/Yarn required) and test it locally:
 
 ```bash
 ./scripts/build_and_run_docker.sh
 ```
 
 This script will:
-- Build the Backstage backend bundle
-- Create a Docker image using the provided Dockerfile
+- Run the entire Backstage build inside Docker using the multi-stage `backstage/Dockerfile`
+- Create a Docker image using the app located under `backstage-app/`
 - Optionally run the container locally on port 7007
+
+> Want to run the Docker build manually? Use (`docker` or `podman`):
+>
+> ```bash
+> docker build -f backstage/Dockerfile -t backstage:latest --build-arg APP_DIR=backstage-app .
+> ```
+> (Replace `docker` with `podman` if that's your runtime.)
+
+> The scripts automatically pick `docker` first and fall back to `podman`. To override, set `CONTAINER_RUNTIME=docker|podman` before running them.
 
 ### 3. Deploy to Azure Container Apps
 
@@ -81,6 +91,8 @@ The Dockerfile is based on the official Backstage backend Dockerfile and include
 - TechDocs local generation support (Python, pip, mkdocs-techdocs-core)
 - Production-optimized Yarn workspace installation
 - Runs as non-root user (`node`)
+
+Set the `APP_DIR` build argument (defaults to `backstage-app`) to point at your Backstage application relative to the build context. This allows you to run `docker build` from the repository root without copying files manually.
 
 ### Azure Resources
 
@@ -144,9 +156,9 @@ To customize Azure deployment:
 ### Build Failures
 
 If the Docker build fails:
-- Ensure you've run `yarn install` and `yarn build:backend` in the Backstage app
-- Check Docker daemon is running
-- Verify Node.js version compatibility
+- Ensure `backstage-app/` exists (run `./scripts/create_backstage_app.sh` if needed)
+- Verify the `APP_DIR` build argument points to the correct directory
+- Check Docker daemon is running and you have enough disk space
 
 ### Deployment Issues
 

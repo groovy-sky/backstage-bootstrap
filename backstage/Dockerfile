@@ -1,14 +1,14 @@
 # Multi-stage Dockerfile to build and run the Backstage backend
 # IMPORTANT:
-#   - Build context MUST be the Backstage app root, e.g. "backstage-app/"
+#   - Build context can be the repository root; set APP_DIR to your Backstage app path relative to the context
 #   - Example:
-#       cd backstage-app
-#       docker build -f ../backstage/Dockerfile -t backstage:latest .
+#       docker build -f backstage/Dockerfile -t backstage:latest --build-arg APP_DIR=backstage-app .
 
 ########################################
 # Builder stage
 ########################################
 FROM node:20-bookworm-slim AS builder
+ARG APP_DIR=backstage-app
 
 # Install sqlite3 dependencies and techdocs build deps
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -16,6 +16,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     apt-get update && \
     apt-get install -y --no-install-recommends \
       libsqlite3-dev python3 python3-pip python3-venv build-essential && \
+    corepack enable && \
     yarn config set python /usr/bin/python3
 
 # Set up a virtual environment for mkdocs-techdocs-core (for any build-time use)
@@ -27,33 +28,19 @@ RUN pip3 install mkdocs-techdocs-core==1.1.7
 
 WORKDIR /app
 
-# ---- Install dependencies (using Yarn Berry if present) ----
-
-# Copy Yarn Berry config if it exists in the app (typical Backstage app)
-# If your app doesn't use .yarn, comment these two lines and adjust the install below.
-COPY .yarn ./.yarn
-COPY .yarnrc.yml ./
-
-# Copy root manifest and lockfile
-COPY package.json yarn.lock ./
-
-# Copy backend package manifest so workspaces can resolve it
-COPY packages/backend/package.json packages/backend/
-
-# If backend depends on other workspaces, copy their manifests too, e.g.:
-# COPY packages/*/package.json packages/*/
+# ---- Copy application source ----
+COPY ${APP_DIR}/ ./
 
 ENV NODE_ENV=development
 ENV CI=true
 
 # Install dependencies (non-interactive)
+RUN corepack prepare yarn@4.4.1 --activate
+
 RUN --mount=type=cache,target=/home/node/.yarn/berry/cache,sharing=locked,uid=1000,gid=1000 \
-    yarn install --immutable
+  yarn install --immutable
 
 # ---- Build backend ----
-
-# Now copy the rest of the app source (ts, configs, etc.)
-COPY . .
 
 # Compile TS and build backend; all inside Docker
 RUN yarn tsc

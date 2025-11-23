@@ -1,0 +1,21 @@
+# Global ignores
+.git
+.gitignore
+
+# Node modules and build artifacts
+node_modules
+**/node_modules
+**/dist
+**/dist-types
+**/.turbo
+**/.cache
+
+# Local environment files
+.env
+.env.*
+
+# Backstage app specific
+backstage-app/.log/
+backstage-app/.tmp/
+backstage-app/packages/*/node_modules
+backstage-app/plugins/*/node_modules
