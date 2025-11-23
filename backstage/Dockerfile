@@ -1,4 +1,9 @@
 # Multi-stage Dockerfile to build and run the Backstage backend
+# IMPORTANT:
+#   - Build context MUST be the Backstage app root, e.g. "backstage-app/"
+#   - Example:
+#       cd backstage-app
+#       docker build -f ../backstage/Dockerfile -t backstage:latest .
 
 ########################################
 # Builder stage
@@ -22,27 +27,35 @@ RUN pip3 install mkdocs-techdocs-core==1.1.7
 
 WORKDIR /app
 
-# Copy only what is needed to install dependencies first (better build cache)
+# ---- Install dependencies (using Yarn Berry if present) ----
+
+# Copy Yarn Berry config if it exists in the app (typical Backstage app)
+# If your app doesn't use .yarn, comment these two lines and adjust the install below.
 COPY .yarn ./.yarn
 COPY .yarnrc.yml ./
+
+# Copy root manifest and lockfile
 COPY package.json yarn.lock ./
 
-# Copy the backend package.json and related workspace metadata so yarn install can run
+# Copy backend package manifest so workspaces can resolve it
 COPY packages/backend/package.json packages/backend/
-# If you have other workspaces that backend depends on, copy their package.jsons too
+
+# If backend depends on other workspaces, copy their manifests too, e.g.:
 # COPY packages/*/package.json packages/*/
 
-# Install dependencies in CI/non-interactive mode
 ENV NODE_ENV=development
 ENV CI=true
 
+# Install dependencies (non-interactive)
 RUN --mount=type=cache,target=/home/node/.yarn/berry/cache,sharing=locked,uid=1000,gid=1000 \
     yarn install --immutable
 
-# Now copy the rest of the repo (source code, configs, etc.)
+# ---- Build backend ----
+
+# Now copy the rest of the app source (ts, configs, etc.)
 COPY . .
 
-# Build TypeScript and backend bundle
+# Compile TS and build backend; all inside Docker
 RUN yarn tsc
 RUN yarn build:backend
 
@@ -66,32 +79,29 @@ ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
 RUN pip3 install mkdocs-techdocs-core==1.1.7
 
-# From here on we use the least-privileged `node` user to run the backend.
 WORKDIR /app
-RUN chown node:node /app
-USER node
 
-# This switches many Node.js dependencies to production mode.
+# Run as non-root
+RUN useradd --user-group --create-home --shell /bin/false appuser && chown appuser:appuser /app
+USER appuser
+
 ENV NODE_ENV=production
 
-# Copy over Yarn 3 configuration, release, and plugins
-COPY --chown=node:node .yarn ./.yarn
-COPY --chown=node:node .yarnrc.yml ./
+# Copy production runtime files from builder
 
-# Copy repo skeleton and yarn lockfile from builder
-# The skeleton is produced by `yarn build:backend` in the builder stage
-COPY --chown=node:node --from=builder /app/yarn.lock /app/package.json /app/packages/backend/dist/skeleton.tar.gz ./
-RUN tar xzf skeleton.tar.gz && rm skeleton.tar.gz
+# Root package + lockfile
+COPY --from=builder /app/package.json /app/yarn.lock ./
 
-# Install only production dependencies focused on the workspaces we need
-RUN --mount=type=cache,target=/home/node/.yarn/berry/cache,sharing=locked,uid=1000,gid=1000 \
-    yarn workspaces focus --all --production
+# Node modules (production deps only would be better, but this is simplest & robust;
+# you can refine later using yarn workspaces focus --production in builder)
+COPY --from=builder /app/node_modules ./node_modules
 
-# Then copy the backend bundle and config files from builder
-COPY --chown=node:node --from=builder /app/packages/backend/dist/bundle.tar.gz ./
-COPY --chown=node:node --from=builder /app/app-config*.yaml ./
+# Backend dist
+COPY --from=builder /app/packages/backend/dist ./packages/backend/dist
+COPY --from=builder /app/packages/backend/package.json ./packages/backend/package.json
 
-RUN tar xzf bundle.tar.gz && rm bundle.tar.gz
+# Config files (non-interactive runtime configuration)
+COPY --from=builder /app/app-config*.yaml ./
 
 EXPOSE 7007
 
