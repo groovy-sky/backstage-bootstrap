@@ -46,6 +46,12 @@ RUN --mount=type=cache,target=/home/node/.yarn/berry/cache,sharing=locked,uid=10
 RUN yarn tsc
 RUN yarn build:backend
 
+# Extract backend bundle tarballs so runtime image can run directly
+RUN cd /app && \
+  tar xzf packages/backend/dist/bundle.tar.gz && \
+  tar xzf packages/backend/dist/skeleton.tar.gz && \
+  rm packages/backend/dist/bundle.tar.gz packages/backend/dist/skeleton.tar.gz
+
 ########################################
 # Runtime stage
 ########################################
@@ -86,6 +92,10 @@ COPY --from=builder /app/node_modules ./node_modules
 # Backend dist
 COPY --from=builder /app/packages/backend/dist ./packages/backend/dist
 COPY --from=builder /app/packages/backend/package.json ./packages/backend/package.json
+
+# Frontend package metadata and static assets required by backend (plugins expect workspace "app")
+COPY --from=builder /app/packages/app/package.json ./packages/app/package.json
+COPY --from=builder /app/packages/app/dist ./packages/app/dist
 
 # Config files (non-interactive runtime configuration)
 COPY --from=builder /app/app-config*.yaml ./
