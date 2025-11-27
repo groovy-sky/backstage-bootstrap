@@ -44,7 +44,7 @@ RUN --mount=type=cache,target=/home/node/.yarn/berry/cache,sharing=locked,uid=10
 
 # Compile TS and build backend; all inside Docker
 RUN yarn tsc
-RUN yarn build:backend
+RUN yarn build:backend --config /app/app-config.yaml --config /app/app-config.production.yaml
 
 # Extract backend bundle tarballs so runtime image can run directly
 RUN cd /app && \
@@ -97,9 +97,12 @@ COPY --from=builder /app/packages/backend/package.json ./packages/backend/packag
 COPY --from=builder /app/packages/app/package.json ./packages/app/package.json
 COPY --from=builder /app/packages/app/dist ./packages/app/dist
 
+# Catalog example data referenced by production config
+COPY --from=builder /app/examples ./examples
+
 # Config files (non-interactive runtime configuration)
 COPY --from=builder /app/app-config*.yaml ./
 
 EXPOSE 7007
 
-CMD ["node", "packages/backend", "--config", "app-config.yaml"]
+CMD ["node", "packages/backend", "--config", "app-config.yaml", "--config", "app-config.production.yaml"]

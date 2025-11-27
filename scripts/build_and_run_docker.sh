@@ -2,7 +2,7 @@
 set -e
 
 # Script to build and optionally run the Backstage Docker image
-# This builds the backend bundle and creates a production Docker image
+# All installs/builds happen inside Docker/Podman for reproducibility
 
 echo "================================================"
 echo "Backstage Backend Docker Build"
@@ -113,16 +113,25 @@ if [[ ${RUN_CONTAINER_INPUT} =~ ^[Yy]$ ]]; then
     echo "Starting container..."
     PORT=${BACKSTAGE_PORT:-7007}
     CONTAINER_NAME=${BACKSTAGE_CONTAINER_NAME:-backstage-local}
-    
+    REQUIRED_ENV_VARS=(BACKEND_SECRET AUTH_MICROSOFT_CLIENT_ID AUTH_MICROSOFT_CLIENT_SECRET AUTH_MICROSOFT_TENANT_ID)
+    ENV_FLAGS=()
+    for VAR_NAME in "${REQUIRED_ENV_VARS[@]}"; do
+        VAR_VALUE=${!VAR_NAME:-}
+        if [ -n "${VAR_VALUE}" ]; then
+            ENV_FLAGS+=("-e" "${VAR_NAME}=${VAR_VALUE}")
+        fi
+    done
+
     # Stop and remove existing container if it exists
     "${CONTAINER_RUNTIME}" rm -f "${CONTAINER_NAME}" 2>/dev/null || true
-    
+
     # Run the container
     "${CONTAINER_RUNTIME}" run -d \
         --name "${CONTAINER_NAME}" \
         -p "${PORT}:7007" \
+        "${ENV_FLAGS[@]}" \
         "${FULL_IMAGE_NAME}"
-    
+
     echo ""
     echo "================================================"
     echo "Container started successfully!"
@@ -137,7 +146,12 @@ if [[ ${RUN_CONTAINER_INPUT} =~ ^[Yy]$ ]]; then
     echo ""
 else
     echo ""
-    echo "To run the container manually:"
-    echo "  ${CONTAINER_RUNTIME} run -p 7007:7007 ${FULL_IMAGE_NAME}"
+    cat <<EOF
+To run the container manually:
+  ${CONTAINER_RUNTIME} run -p 7007:7007 \
+      -e BACKEND_SECRET=... -e AUTH_MICROSOFT_CLIENT_ID=... \
+      -e AUTH_MICROSOFT_CLIENT_SECRET=... -e AUTH_MICROSOFT_TENANT_ID=... \
+      ${FULL_IMAGE_NAME}
+EOF
     echo ""
 fi

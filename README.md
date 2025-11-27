@@ -55,6 +55,15 @@ This script will:
 - Create a Docker image using the app located under `backstage-app/`
 - Optionally run the container locally on port 7007
 
+Set the following environment variables before running the script (or export them when invoking `podman run`) to enable Azure Entra ID authentication:
+
+| Variable | Description |
+| --- | --- |
+| `BACKEND_SECRET` | Random 32+ character string used to sign Backstage backend tokens |
+| `AUTH_MICROSOFT_CLIENT_ID` | Application (client) ID from your Entra ID app registration |
+| `AUTH_MICROSOFT_CLIENT_SECRET` | Client secret created for the registration |
+| `AUTH_MICROSOFT_TENANT_ID` | Directory (tenant) ID that holds the registration |
+
 > Want to run the Docker build manually? Use (`docker` or `podman`):
 >
 > ```bash
@@ -63,6 +72,16 @@ This script will:
 > (Replace `docker` with `podman` if that's your runtime.)
 
 > The scripts automatically pick `docker` first and fall back to `podman`. To override, set `CONTAINER_RUNTIME=docker|podman` before running them.
+
+> Want to run the container manually (daemonized)?
+>
+> ```bash
+> podman run -d --name backstage-local -p 7007:7007 \
+>   -e BACKEND_SECRET=... -e AUTH_MICROSOFT_CLIENT_ID=... \
+>   -e AUTH_MICROSOFT_CLIENT_SECRET=... -e AUTH_MICROSOFT_TENANT_ID=... \
+>   backstage:latest
+> # or swap podman for docker
+> ```
 
 ### 3. Deploy to Azure Container Apps
 
@@ -83,6 +102,15 @@ This script will:
 
 ## Architecture
 
+### Azure Entra ID Authentication
+
+1. Create an Azure Entra ID application registration (Web platform) and add the following redirect URIs:
+  - `http://localhost:7007/api/auth/microsoft/handler/frame`
+  - `http://localhost:3000/api/auth/microsoft/handler/frame` (for the frontend during local dev)
+2. Generate a client secret and copy the **Application (client) ID**, **Directory (tenant) ID**, and secret value.
+3. Export the values along with a strong `BACKEND_SECRET` before running the build or starting the container. The helper scripts automatically forward these variables when launching the container.
+4. When deploying to Azure Container Apps, set the same variables as container environment variables/secrets so authentication works in production.
+
 ### Docker Image
 
 The Dockerfile is based on the official Backstage backend Dockerfile and includes:
@@ -92,7 +120,7 @@ The Dockerfile is based on the official Backstage backend Dockerfile and include
 - Production-optimized Yarn workspace installation
 - Runs as non-root user (`node`)
 
-Set the `APP_DIR` build argument (defaults to `backstage-app`) to point at your Backstage application relative to the build context. This allows you to run `docker build` from the repository root without copying files manually.
+Set the `APP_DIR` build argument (defaults to `backstage-app`) to point at your Backstage application relative to the build context. This allows you to run `docker build` from the repository root without copying files manually. The runtime image already contains the compiled backend, frontend static assets, and Microsoft authentication wiring, so you only need to provide the Azure-related environment variables at runtime.
 
 ### Azure Resources
 
